@@ -1,0 +1,73 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13.7-management
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBIT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBIT_PASSWORD}
+    ports:
+      - 127.0.0.1:5672:5672
+      - 127.0.0.1:15672:15672
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 5s
+      retries: 5
+      timeout: 5s
+
+  db:
+    image: cassandra:latest
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:9042:9042
+    healthcheck:
+      test: ["CMD-SHELL", "[ $$(nodetool statusgossip) = running ]"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  producer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ./producer
+    volumes:
+      - ./.env:/service/.env
+      - ./logs.txt:/service/logs.txt
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      consumer1:
+        condition: service_started
+      consumer2:
+        condition: service_started
+    
+  consumer1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ./consumer
+    volumes:
+      - .env:/service/.env
+    environment:
+      - KEYSPACE="consumer1"
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  consumer2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ./consumer
+    volumes:
+      - .env:/service/.env
+    environment:
+      - KEYSPACE="consumer2"
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
